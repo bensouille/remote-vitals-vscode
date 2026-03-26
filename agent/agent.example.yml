@@ -1,0 +1,8 @@
+# Agent configuration example
+# Copy to agent.yml and fill in your values
+
+backend: https://dashboard.example.com
+token: REPLACE_WITH_YOUR_AGENT_TOKEN
+interval: 60
+# no_verify_ssl: false  # set true only for local dev with self-signed cert
+# no_report_sessions: false  # set true when session-reporter VS Code extension is installed on this host

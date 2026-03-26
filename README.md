@@ -31,7 +31,7 @@ Optionally, it can also **push metrics to a dashboard backend** at each refresh 
 
 ### From VSIX (recommended)
 
-Download the latest `.vsix` from [GitHub Releases](https://github.com/bensouille/remote-vitals-vscode/releases), then install it **on the remote host** while connected via SSH:
+Download the latest `.vsix` from [GitHub Releases](https://github.com/your-username/remote-vitals-vscode/releases), then install it **on the remote host** while connected via SSH:
 
 **Via Command Palette:**
 `Ctrl+Shift+P` → `Extensions: Install from VSIX...` → select the file
@@ -57,7 +57,7 @@ Click **Configurer** to launch the 4-step wizard:
 |------|-------|---------|
 | 1/4 — Backend URL | URL of your dashboard | `https://dashboard.example.com` |
 | 2/4 — Agent Token | Secret shared with the backend | `874558ee8c5b...` |
-| 3/4 — Host Alias | Display name in the dashboard | `MiniPC` |
+| 3/4 — Host Alias | Display name in the dashboard | `my-server` |
 | 4/4 — SSH User | SSH user for dashboard deep-links | `root` |
 
 > Press **Échap** at any step to cancel without saving. Click **Plus tard** to skip (won't be asked again).
@@ -111,7 +111,7 @@ Once installed and (optionally) configured:
 
 All settings can be set via the wizard (`remoteVitals.configure`) or manually in VS Code Settings (`Ctrl+,` → search "Remote Vitals").
 
-> **Coexistence with session-reporter:** `remote-vitals` and [`session-reporter`](https://github.com/bensouille/session-reporter-vscode) are designed to run side by side. `remote-vitals` handles system metrics (CPU / RAM / disk / uptime); `session-reporter` handles workspace session reporting. The default (`reportSessions: false`) is the right choice when both are installed. Set `reportSessions: true` only on hosts where `session-reporter` is **not** present.
+> **Coexistence with session-reporter:** `remote-vitals` and [`session-reporter`](https://github.com/your-username/session-reporter-vscode) are designed to run side by side. `remote-vitals` handles system metrics (CPU / RAM / disk / uptime); `session-reporter` handles workspace session reporting. The default (`reportSessions: false`) is the right choice when both are installed. Set `reportSessions: true` only on hosts where `session-reporter` is **not** present.
 
 ---
 
@@ -135,7 +135,7 @@ The backend validates it against the `AGENT_TOKEN` environment variable. A `401`
 
 ```json
 {
-  "hostname": "minipc.bensouille.ovh",
+  "hostname": "my-server.example.com",
   "cpu_percent": 12.4,
   "ram_percent": 58.1,
   "disk_percent": 34.2,
@@ -143,8 +143,8 @@ The backend validates it against the `AGENT_TOKEN` environment variable. A `401`
   "os_info": "Linux 6.1.0-28-amd64",
   "vscode_sessions": [
     {
-      "repo": "/home/steph/dashboard",
-      "vscode_url": "vscode://remote.session-reporter/open?remote=root%40MiniPC&folder=%2Fhome%2Fsteph%2Fdashboard"
+      "repo": "/home/user/myproject",
+      "vscode_url": "vscode://remote.session-reporter/open?remote=user%40my-server&folder=%2Fhome%2Fuser%2Fmyproject"
     }
   ]
 }

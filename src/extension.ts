@@ -96,9 +96,12 @@ export function activate(context: vscode.ExtensionContext): void {
   // ── First-run onboarding ──────────────────────────────────────────────────
   void (async () => {
     const setupDone = context.globalState.get<boolean>("setupDone") ?? false;
-    const currentUrl: string =
-      vscode.workspace.getConfiguration("remoteVitals").get("backendUrl") ?? "";
+    const cfg = vscode.workspace.getConfiguration("remoteVitals");
+    const currentUrl: string = cfg.get("backendUrl") ?? "";
+    const currentToken: string = cfg.get("agentToken") ?? "";
+
     if (!setupDone && !currentUrl) {
+      // Not yet configured — offer the setup wizard
       const choice = await vscode.window.showInformationMessage(
         "Remote Vitals: configurer le push vers votre dashboard backend?",
         "Configurer",
@@ -108,6 +111,12 @@ export function activate(context: vscode.ExtensionContext): void {
         await runSetupWizard(context);
       } else {
         await context.globalState.update("setupDone", true);
+      }
+    } else if (currentUrl && currentToken) {
+      // Already configured — ensure agent is installed
+      const agentInstalled = context.globalState.get<boolean>("agentInstalled") ?? false;
+      if (!agentInstalled) {
+        await installAgent(context);
       }
     }
   })();
@@ -315,19 +324,8 @@ async function runSetupWizard(context: vscode.ExtensionContext): Promise<void> {
   await context.globalState.update("setupDone", true);
 
   if (backendUrl && agentToken) {
-    // Offer to install the background agent so metrics keep flowing when VS Code is closed
-    const installChoice = await vscode.window.showInformationMessage(
-      "Remote Vitals: installer l'agent de fond (métriques même quand VS Code est fermé)?",
-      "Installer l'agent",
-      "Non merci"
-    );
-    if (installChoice === "Installer l'agent") {
-      await installAgent(context, backendUrl, agentToken);
-    } else {
-      vscode.window.showInformationMessage(
-        "Remote Vitals: dashboard push configuré — les métriques seront envoyées au prochain cycle."
-      );
-    }
+    // Auto-install the background agent so metrics keep flowing when VS Code is closed
+    await installAgent(context, backendUrl, agentToken);
   } else {
     vscode.window.showInformationMessage(
       "Remote Vitals: configuration sauvegardée. Dashboard push désactivé (URL ou token manquant)."
@@ -339,7 +337,7 @@ async function runSetupWizard(context: vscode.ExtensionContext): Promise<void> {
 // Background agent installer
 // ---------------------------------------------------------------------------
 
-const AGENT_REPO_URL = "https://raw.githubusercontent.com/bensouille/dashboard/main/agent";
+const AGENT_REPO_URL = "https://raw.githubusercontent.com/your-username/remote-vitals-vscode/main/agent";
 const AGENT_INSTALL_DIR = `${os.homedir()}/.local/dashboard-agent`;
 const AGENT_SERVICE = "dashboard-agent";
 
@@ -431,7 +429,7 @@ async function installAgent(
 // ---------------------------------------------------------------------------
 
 const GITHUB_RELEASES_URL =
-  "https://api.github.com/repos/bensouille/remote-vitals-vscode/releases/latest";
+  "https://api.github.com/repos/your-username/remote-vitals-vscode/releases/latest";
 
 function httpsGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
