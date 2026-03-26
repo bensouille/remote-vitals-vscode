@@ -43,21 +43,6 @@
           "minimum": 2,
           "maximum": 300,
           "markdownDescription": "Refresh interval in seconds (default: 5)"
-        },
-        "remoteVitals.backendUrl": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Optional: URL of your dashboard backend to also push metrics, e.g. `https://dashboard.example.com`"
-        },
-        "remoteVitals.agentToken": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Optional: `AGENT_TOKEN` for pushing metrics to the dashboard backend"
-        },
-        "remoteVitals.pushToDashboard": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Push metrics to the dashboard backend at each refresh"
         }
       }
     }

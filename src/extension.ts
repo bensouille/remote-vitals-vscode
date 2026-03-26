@@ -4,17 +4,15 @@
  * extensionKind: workspace  →  runs on the REMOTE host when connected via
  * VS Code Remote SSH.  Reads /proc directly, no agent install required.
  *
+ * Provides a live metrics panel (CPU / RAM / Disk / Network) inside VS Code.
+ * For persistent reporting to a dashboard backend, use agent/agent.py instead.
+ *
  * Commands:
  *   remoteVitals.showPanel   — open the metrics WebView panel
  *   remoteVitals.refresh     — force immediate refresh
- *
- * Optional: pushes metrics to the dashboard backend (same API as agent.py)
- * if remoteVitals.pushToDashboard is enabled.
  */
 
 import * as vscode from "vscode";
-import * as https from "https";
-import * as http from "http";
 import * as crypto from "crypto";
 
 import { MetricsCollector, AllMetrics } from "./collector";
@@ -134,7 +132,6 @@ function doRefresh(statusItem: vscode.StatusBarItem): void {
     if (panel) {
       panel.webview.postMessage({ command: "update", metrics });
     }
-    maybePushToDashboard(metrics);
   } catch (err) {
     log.appendLine(`[doRefresh] collection error: ${err}`);
     statusItem.text = "$(pulse) Metrics error";
@@ -169,70 +166,3 @@ function stopTimer(): void {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Optional: push to dashboard backend (same checkin route as agent.py)
-// ---------------------------------------------------------------------------
-
-function maybePushToDashboard(metrics: AllMetrics): void {
-  const cfg = vscode.workspace.getConfiguration("remoteVitals");
-  if (!cfg.get<boolean>("pushToDashboard")) { return; }
-
-  const backendUrl: string = cfg.get("backendUrl") ?? "";
-  const token: string = cfg.get("agentToken") ?? "";
-
-  if (!backendUrl || !token) { return; }
-
-  const payload = buildCheckinPayload(metrics);
-  postJson(backendUrl, "/api/v1/hosts/checkin", token, payload);
-}
-
-function buildCheckinPayload(m: AllMetrics): object {
-  return {
-    hostname: m.host.hostname,
-    cpu_percent: m.cpu.usagePercent,
-    ram_percent: m.mem.usagePercent,
-    ram_used_mb: Math.round(m.mem.usedKb / 1024),
-    ram_total_mb: Math.round(m.mem.totalKb / 1024),
-    disk_percent: m.disks[0]?.usagePercent ?? 0,
-    disk_used_gb: m.disks[0] ? +(m.disks[0].usedKb / 1024 / 1024).toFixed(2) : 0,
-    disk_total_gb: m.disks[0] ? +(m.disks[0].totalKb / 1024 / 1024).toFixed(2) : 0,
-    uptime_seconds: Math.round(m.host.uptimeSeconds),
-    os_info: `${m.host.platform} ${m.host.kernelRelease}`,
-    sessions: [],
-  };
-}
-
-function postJson(
-  baseUrl: string,
-  path: string,
-  token: string,
-  body: object
-): void {
-  try {
-    const url = new URL(path, baseUrl);
-    const data = Buffer.from(JSON.stringify(body), "utf-8");
-    const isHttps = url.protocol === "https:";
-    const options: http.RequestOptions = {
-      method: "POST",
-      hostname: url.hostname,
-      port: url.port || (isHttps ? 443 : 80),
-      path: url.pathname,
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": data.length,
-        "X-Agent-Token": token,
-      },
-    };
-
-    const req = (isHttps ? https : http).request(options, (res) => {
-      if (res.statusCode && res.statusCode >= 400) {
-        log.appendLine(`[dashboard push] HTTP ${res.statusCode}`);
-      }
-    });
-    req.on("error", (err) => log.appendLine(`[dashboard push] error: ${err.message}`));
-    req.write(data);
-    req.end();
-  } catch (err) {
-    log.appendLine(`[dashboard push] failed: ${err}`);
-  }
-}

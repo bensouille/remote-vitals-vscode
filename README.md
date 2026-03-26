@@ -4,6 +4,8 @@
 
 A VS Code extension that works as a lightweight alternative to [Glances](https://nicolargo.github.io/glances/) for remote hosts. It runs as a `workspace` extension directly on the remote machine via VS Code Remote SSH, reading `/proc` and `df` — nothing else to deploy.
 
+> **Scope:** Remote Vitals is a **local viewer** — it shows metrics inside VS Code while you are connected. For persistent background reporting to a dashboard backend (even when VS Code is closed), use the companion [`agent/agent.py`](../agent/) instead.
+
 ## Features
 
 - **CPU** — overall usage % + per-core breakdown
@@ -12,7 +14,6 @@ A VS Code extension that works as a lightweight alternative to [Glances](https:/
 - **Network** — per-interface real-time RX/TX rates
 - **Status bar** — always-visible CPU & RAM at a glance
 - **Auto-refresh** — configurable interval (default 5s)
-- **Optional dashboard push** — report metrics to the [dashboard](../README.md) backend (same API as `agent.py`) without installing anything extra on the host
 
 ## Requirements
 
@@ -30,9 +31,6 @@ A VS Code extension that works as a lightweight alternative to [Glances](https:/
 | Setting | Default | Description |
 |---|---|---|
 | `remoteVitals.refreshInterval` | `5` | Refresh interval in seconds |
-| `remoteVitals.pushToDashboard` | `false` | Push metrics to dashboard backend |
-| `remoteVitals.backendUrl` | `""` | Dashboard backend URL |
-| `remoteVitals.agentToken` | `""` | `AGENT_TOKEN` for the backend |
 
 ## Build & Install
 
