@@ -496,8 +496,12 @@ async function checkForUpdates(
   try {
     log.appendLine("[update] checking GitHub releases…");
     const body = await httpsGet(GITHUB_RELEASES_URL);
-    const release = JSON.parse(body) as { tag_name: string; assets: { name: string; browser_download_url: string }[] };
+    const release = JSON.parse(body) as { tag_name?: string; assets?: { name: string; browser_download_url: string }[] };
     const latest = release.tag_name;
+    if (!latest) {
+      log.appendLine(`[update] unexpected response — no tag_name: ${body.slice(0, 200)}`);
+      return;
+    }
     const current: string = context.extension.packageJSON.version as string;
 
     if (!semverGt(latest, `v${current}`)) {
@@ -508,7 +512,7 @@ async function checkForUpdates(
       return;
     }
 
-    const asset = release.assets.find((a) => a.name.endsWith(".vsix"));
+    const asset = (release.assets ?? []).find((a) => a.name.endsWith(".vsix"));
     if (!asset) {
       log.appendLine("[update] no VSIX asset found");
       return;
