@@ -2,7 +2,7 @@
   "name": "remote-vitals",
   "displayName": "Remote Vitals",
   "description": "Live CPU / RAM / Disk / Network metrics from any remote SSH host — no agent install required. Reads /proc directly as a VS Code Workspace extension.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "remote",
   "engines": {
     "vscode": "^1.74.0"
@@ -93,6 +93,11 @@
           "type": "string",
           "default": "",
           "markdownDescription": "SSH user for this host (e.g. `root`). Combined with `hostAlias` to form `user@host` in the dashboard deep-link."
+        },
+        "remoteVitals.reportSessions": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Include open VS Code workspace folders in each checkin payload. Set to `false` if you already use the `session-reporter` extension on this host."
         }
       }
     }

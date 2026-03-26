@@ -329,6 +329,7 @@ function maybePushToDashboard(metrics: AllMetrics): void {
   const token: string = cfg.get("agentToken") ?? "";
   if (!backendUrl || !token) { return; }
 
+  const reportSessions: boolean = cfg.get("reportSessions") ?? true;
   const payload: object = {
     hostname: metrics.host.hostname,
     cpu_percent: metrics.cpu.usagePercent,
@@ -336,7 +337,7 @@ function maybePushToDashboard(metrics: AllMetrics): void {
     disk_percent: metrics.disks[0]?.usagePercent ?? 0,
     uptime_seconds: Math.round(metrics.host.uptimeSeconds),
     os_info: `${metrics.host.platform} ${metrics.host.kernelRelease}`,
-    vscode_sessions: collectSessions(cfg, metrics.host.hostname),
+    vscode_sessions: reportSessions ? collectSessions(cfg, metrics.host.hostname) : [],
   };
 
   try {

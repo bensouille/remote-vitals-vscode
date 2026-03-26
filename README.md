@@ -107,19 +107,98 @@ Once installed and (optionally) configured:
 | `remoteVitals.agentToken` | `""` | Secret token matching `AGENT_TOKEN` on the backend |
 | `remoteVitals.hostAlias` | `""` | Display name for this host in the dashboard (default: system hostname) |
 | `remoteVitals.sshUser` | `""` | SSH user — combined with `hostAlias` to form `user@host` in dashboard deep-links |
+| `remoteVitals.reportSessions` | `true` | Include open workspace folders in each checkin. Set to `false` if the `session-reporter` extension is already installed on this host |
 
 All settings can be set via the wizard (`remoteVitals.configure`) or manually in VS Code Settings (`Ctrl+,` → search "Remote Vitals").
 
+> **Coexistence with session-reporter:** If you use the [`session-reporter`](https://github.com/bensouille/session-reporter-vscode) extension on the same host, set `remoteVitals.reportSessions` to `false` to avoid conflicts. `remote-vitals` will then only push system metrics, while `session-reporter` handles workspace session reporting independently.
+
 ---
 
-## Dashboard push vs. agent.py
+## Backend endpoint
 
-| Scenario | Solution |
-|----------|----------|
-| VS Code SSH open on the host | **Remote Vitals extension** (this project) |
-| Headless host / VS Code closed | [agent.py](https://github.com/bensouille/dashboard/tree/main/agent) |
+The extension calls `POST /api/v1/hosts/checkin` at every refresh cycle.
 
-Both use the same `POST /api/v1/hosts/checkin` endpoint and the same `AGENT_TOKEN`. You can run both — the last checkin wins.
+### Authentication
+
+Every request includes the token in the `X-Agent-Token` header:
+
+```
+POST /api/v1/hosts/checkin
+X-Agent-Token: <AGENT_TOKEN>
+Content-Type: application/json
+```
+
+The backend validates it against the `AGENT_TOKEN` environment variable. A `401` response means the token is wrong or missing.
+
+### Request body
+
+```json
+{
+  "hostname": "minipc.bensouille.ovh",
+  "cpu_percent": 12.4,
+  "ram_percent": 58.1,
+  "disk_percent": 34.2,
+  "uptime_seconds": 86400,
+  "os_info": "Linux 6.1.0-28-amd64",
+  "vscode_sessions": [
+    {
+      "repo": "/home/steph/dashboard",
+      "vscode_url": "vscode://remote.session-reporter/open?remote=root%40MiniPC&folder=%2Fhome%2Fsteph%2Fdashboard"
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `hostname` | string | System hostname (or `hostAlias` if set) |
+| `cpu_percent` | float | Overall CPU usage 0–100 |
+| `ram_percent` | float | RAM usage 0–100 |
+| `disk_percent` | float | Root partition usage 0–100 |
+| `uptime_seconds` | float | Seconds since boot |
+| `os_info` | string | OS + kernel string |
+| `vscode_sessions` | array | Open workspace folders (empty array if none) |
+
+### Response
+
+```json
+{ "ok": true }
+```
+
+Hosts are **auto-registered** on first checkin — no need to create them manually in the backend.
+
+### Implementing a custom backend
+
+Any HTTP server can receive these payloads. Minimal FastAPI example:
+
+```python
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel
+
+app = FastAPI()
+AGENT_TOKEN = "your-secret-token"
+
+class Session(BaseModel):
+    repo: str
+    vscode_url: str
+
+class Checkin(BaseModel):
+    hostname: str
+    cpu_percent: float
+    ram_percent: float
+    disk_percent: float
+    uptime_seconds: float
+    os_info: str
+    vscode_sessions: list[Session] = []
+
+@app.post("/api/v1/hosts/checkin")
+def checkin(body: Checkin, x_agent_token: str = Header(...)):
+    if x_agent_token != AGENT_TOKEN:
+        raise HTTPException(status_code=401)
+    # store body.hostname, body.cpu_percent, etc.
+    return {"ok": True}
+```
 
 ---
 
