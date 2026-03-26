@@ -52,6 +52,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("remoteVitals.refresh", () => {
       doRefresh(statusItem);
+    }),
+    vscode.commands.registerCommand("remoteVitals.configure", () => {
+      void runSetupWizard(context);
     })
   );
 
@@ -79,6 +82,25 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
   validateBackendConfig();
+
+  // ── First-run onboarding ──────────────────────────────────────────────────
+  void (async () => {
+    const setupDone = context.globalState.get<boolean>("setupDone") ?? false;
+    const currentUrl: string =
+      vscode.workspace.getConfiguration("remoteVitals").get("backendUrl") ?? "";
+    if (!setupDone && !currentUrl) {
+      const choice = await vscode.window.showInformationMessage(
+        "Remote Vitals: configurer le push vers votre dashboard backend?",
+        "Configurer",
+        "Plus tard"
+      );
+      if (choice === "Configurer") {
+        await runSetupWizard(context);
+      } else {
+        await context.globalState.update("setupDone", true);
+      }
+    }
+  })();
 }
 
 export function deactivate(): void {
@@ -228,6 +250,67 @@ function collectSessions(
 // ---------------------------------------------------------------------------
 // Dashboard backend push (replaces agent.py for SSH-connected hosts)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Setup wizard — collects all settings via VS Code input boxes
+// ---------------------------------------------------------------------------
+
+async function runSetupWizard(context: vscode.ExtensionContext): Promise<void> {
+  const cfg = vscode.workspace.getConfiguration("remoteVitals");
+
+  const backendUrl = await vscode.window.showInputBox({
+    title: "Remote Vitals (1/4) — Backend URL",
+    prompt: "URL de votre dashboard backend",
+    placeHolder: "https://dashboard.example.com",
+    value: cfg.get<string>("backendUrl") ?? "",
+    validateInput: (v) => {
+      if (!v) { return null; } // empty = disable push
+      try { new URL(v); return null; } catch { return "URL invalide"; }
+    },
+  });
+  if (backendUrl === undefined) { return; } // ESC → cancel
+
+  const agentToken = await vscode.window.showInputBox({
+    title: "Remote Vitals (2/4) — Agent Token",
+    prompt: "Secret token (AGENT_TOKEN du backend). Générer: openssl rand -hex 32",
+    placeHolder: "874558ee8c5b...",
+    password: true,
+    value: cfg.get<string>("agentToken") ?? "",
+  });
+  if (agentToken === undefined) { return; }
+
+  const hostAlias = await vscode.window.showInputBox({
+    title: "Remote Vitals (3/4) — Alias de l'hôte",
+    prompt: "Nom d'affichage dans le dashboard (défaut: hostname système)",
+    placeHolder: "MiniPC",
+    value: cfg.get<string>("hostAlias") ?? "",
+  });
+  if (hostAlias === undefined) { return; }
+
+  const sshUser = await vscode.window.showInputBox({
+    title: "Remote Vitals (4/4) — Utilisateur SSH",
+    prompt: "Utilisateur SSH pour les liens du dashboard",
+    placeHolder: "root",
+    value: cfg.get<string>("sshUser") ?? "",
+  });
+  if (sshUser === undefined) { return; }
+
+  await cfg.update("backendUrl", backendUrl, vscode.ConfigurationTarget.Global);
+  await cfg.update("agentToken", agentToken, vscode.ConfigurationTarget.Global);
+  await cfg.update("hostAlias", hostAlias, vscode.ConfigurationTarget.Global);
+  await cfg.update("sshUser", sshUser, vscode.ConfigurationTarget.Global);
+  await context.globalState.update("setupDone", true);
+
+  if (backendUrl && agentToken) {
+    vscode.window.showInformationMessage(
+      "Remote Vitals: dashboard push configuré — les métriques seront envoyées au prochain cycle."
+    );
+  } else {
+    vscode.window.showInformationMessage(
+      "Remote Vitals: configuration sauvegardée. Dashboard push désactivé (URL ou token manquant)."
+    );
+  }
+}
 
 function validateBackendConfig(): void {
   const cfg = vscode.workspace.getConfiguration("remoteVitals");

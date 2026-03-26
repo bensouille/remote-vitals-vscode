@@ -2,14 +2,28 @@
   "name": "remote-vitals",
   "displayName": "Remote Vitals",
   "description": "Live CPU / RAM / Disk / Network metrics from any remote SSH host — no agent install required. Reads /proc directly as a VS Code Workspace extension.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "remote",
   "engines": {
     "vscode": "^1.74.0"
   },
-  "categories": ["Other"],
-  "keywords": ["remote", "ssh", "metrics", "cpu", "ram", "disk", "monitoring", "glances", "vitals"],
-  "extensionKind": ["workspace"],
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "remote",
+    "ssh",
+    "metrics",
+    "cpu",
+    "ram",
+    "disk",
+    "monitoring",
+    "glances",
+    "vitals"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/bensouille/remote-vitals-vscode.git"
@@ -30,12 +44,24 @@
         "command": "remoteVitals.refresh",
         "title": "Remote Vitals: Refresh Now",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "remoteVitals.configure",
+        "title": "Remote Vitals: Configure Dashboard Push",
+        "icon": "$(settings-gear)"
       }
     ],
     "menus": {
       "commandPalette": [
-        { "command": "remoteVitals.showPanel" },
-        { "command": "remoteVitals.refresh" }
+        {
+          "command": "remoteVitals.showPanel"
+        },
+        {
+          "command": "remoteVitals.refresh"
+        },
+        {
+          "command": "remoteVitals.configure"
+        }
       ]
     },
     "configuration": {
