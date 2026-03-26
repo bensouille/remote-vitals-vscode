@@ -10,6 +10,10 @@
   "categories": ["Other"],
   "keywords": ["remote", "ssh", "metrics", "cpu", "ram", "disk", "monitoring", "glances", "vitals"],
   "extensionKind": ["workspace"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bensouille/remote-vitals-vscode.git"
+  },
   "activationEvents": [
     "onStartupFinished",
     "onCommand:remoteVitals.showPanel"

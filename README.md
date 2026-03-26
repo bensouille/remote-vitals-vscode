@@ -4,7 +4,7 @@
 
 A VS Code extension that works as a lightweight alternative to [Glances](https://nicolargo.github.io/glances/) for remote hosts. It runs as a `workspace` extension directly on the remote machine via VS Code Remote SSH, reading `/proc` and `df` — nothing else to deploy.
 
-> **Scope:** Remote Vitals is a **local viewer** — it shows metrics inside VS Code while you are connected. For persistent background reporting to a dashboard backend (even when VS Code is closed), use the companion [`agent/agent.py`](../agent/) instead.
+> **Scope:** Remote Vitals is a **local viewer** — it shows metrics inside VS Code while you are connected. For persistent background reporting to a dashboard backend (even when VS Code is closed), use the companion [agent](https://github.com/bensouille/dashboard/tree/main/agent) instead.
 
 ## Features
 
