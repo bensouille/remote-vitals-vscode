@@ -5,7 +5,8 @@
  * VS Code Remote SSH.  Reads /proc directly, no agent install required.
  *
  * Provides a live metrics panel (CPU / RAM / Disk / Network) inside VS Code.
- * For persistent reporting to a dashboard backend, use agent/agent.py instead.
+ * Optionally reports metrics to a dashboard backend — replacing agent.py for
+ * hosts where VS Code Remote SSH is already in use.
  *
  * Commands:
  *   remoteVitals.showPanel   — open the metrics WebView panel
@@ -13,6 +14,8 @@
  */
 
 import * as vscode from "vscode";
+import * as https from "https";
+import * as http from "http";
 import * as crypto from "crypto";
 
 import { MetricsCollector, AllMetrics } from "./collector";
@@ -66,6 +69,16 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     })
   );
+
+  // Notify when backend push is misconfigured
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("remoteVitals.backendUrl") || e.affectsConfiguration("remoteVitals.agentToken")) {
+        validateBackendConfig();
+      }
+    })
+  );
+  validateBackendConfig();
 }
 
 export function deactivate(): void {
@@ -132,6 +145,7 @@ function doRefresh(statusItem: vscode.StatusBarItem): void {
     if (panel) {
       panel.webview.postMessage({ command: "update", metrics });
     }
+    maybePushToDashboard(metrics);
   } catch (err) {
     log.appendLine(`[doRefresh] collection error: ${err}`);
     statusItem.text = "$(pulse) Metrics error";
@@ -163,6 +177,69 @@ function stopTimer(): void {
   if (refreshTimer !== undefined) {
     clearInterval(refreshTimer);
     refreshTimer = undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard backend push (replaces agent.py for SSH-connected hosts)
+// ---------------------------------------------------------------------------
+
+function validateBackendConfig(): void {
+  const cfg = vscode.workspace.getConfiguration("remoteVitals");
+  const url: string = cfg.get("backendUrl") ?? "";
+  const token: string = cfg.get("agentToken") ?? "";
+  if ((url && !token) || (!url && token)) {
+    vscode.window.showWarningMessage(
+      "Remote Vitals: both 'backendUrl' and 'agentToken' must be set to enable dashboard push."
+    );
+  }
+}
+
+function maybePushToDashboard(metrics: AllMetrics): void {
+  const cfg = vscode.workspace.getConfiguration("remoteVitals");
+  const backendUrl: string = cfg.get("backendUrl") ?? "";
+  const token: string = cfg.get("agentToken") ?? "";
+  if (!backendUrl || !token) { return; }
+
+  const payload: object = {
+    hostname: metrics.host.hostname,
+    cpu_percent: metrics.cpu.usagePercent,
+    ram_percent: metrics.mem.usagePercent,
+    ram_used_mb: Math.round(metrics.mem.usedKb / 1024),
+    ram_total_mb: Math.round(metrics.mem.totalKb / 1024),
+    disk_percent: metrics.disks[0]?.usagePercent ?? 0,
+    disk_used_gb: metrics.disks[0] ? +(metrics.disks[0].usedKb / 1024 / 1024).toFixed(2) : 0,
+    disk_total_gb: metrics.disks[0] ? +(metrics.disks[0].totalKb / 1024 / 1024).toFixed(2) : 0,
+    uptime_seconds: Math.round(metrics.host.uptimeSeconds),
+    os_info: `${metrics.host.platform} ${metrics.host.kernelRelease}`,
+    sessions: [],
+  };
+
+  try {
+    const url = new URL("/api/v1/hosts/checkin", backendUrl);
+    const data = Buffer.from(JSON.stringify(payload), "utf-8");
+    const isHttps = url.protocol === "https:";
+    const options: http.RequestOptions = {
+      method: "POST",
+      hostname: url.hostname,
+      port: url.port || (isHttps ? 443 : 80),
+      path: url.pathname,
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": data.length,
+        "X-Agent-Token": token,
+      },
+    };
+    const req = (isHttps ? https : http).request(options, (res) => {
+      if (res.statusCode && res.statusCode >= 400) {
+        log.appendLine(`[dashboard] HTTP ${res.statusCode}`);
+      }
+    });
+    req.on("error", (err) => log.appendLine(`[dashboard] ${err.message}`));
+    req.write(data);
+    req.end();
+  } catch (err) {
+    log.appendLine(`[dashboard] push failed: ${err}`);
   }
 }
 

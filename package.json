@@ -43,6 +43,16 @@
           "minimum": 2,
           "maximum": 300,
           "markdownDescription": "Refresh interval in seconds (default: 5)"
+        },
+        "remoteVitals.backendUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Dashboard backend URL, e.g. `https://dashboard.example.com`. When set (with `agentToken`), metrics are pushed at each refresh — no need to install `agent.py` on this host."
+        },
+        "remoteVitals.agentToken": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Secret token matching the `AGENT_TOKEN` environment variable on the backend (`openssl rand -hex 32`)."
         }
       }
     }
