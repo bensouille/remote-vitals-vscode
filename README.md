@@ -107,11 +107,11 @@ Once installed and (optionally) configured:
 | `remoteVitals.agentToken` | `""` | Secret token matching `AGENT_TOKEN` on the backend |
 | `remoteVitals.hostAlias` | `""` | Display name for this host in the dashboard (default: system hostname) |
 | `remoteVitals.sshUser` | `""` | SSH user — combined with `hostAlias` to form `user@host` in dashboard deep-links |
-| `remoteVitals.reportSessions` | `true` | Include open workspace folders in each checkin. Set to `false` if the `session-reporter` extension is already installed on this host |
+| `remoteVitals.reportSessions` | `false` | Include open workspace folders in each checkin. Keep `false` (default) if `session-reporter` is installed on the host. Set to `true` only on hosts without `session-reporter` |
 
 All settings can be set via the wizard (`remoteVitals.configure`) or manually in VS Code Settings (`Ctrl+,` → search "Remote Vitals").
 
-> **Coexistence with session-reporter:** If you use the [`session-reporter`](https://github.com/bensouille/session-reporter-vscode) extension on the same host, set `remoteVitals.reportSessions` to `false` to avoid conflicts. `remote-vitals` will then only push system metrics, while `session-reporter` handles workspace session reporting independently.
+> **Coexistence with session-reporter:** `remote-vitals` and [`session-reporter`](https://github.com/bensouille/session-reporter-vscode) are designed to run side by side. `remote-vitals` handles system metrics (CPU / RAM / disk / uptime); `session-reporter` handles workspace session reporting. The default (`reportSessions: false`) is the right choice when both are installed. Set `reportSessions: true` only on hosts where `session-reporter` is **not** present.
 
 ---
 

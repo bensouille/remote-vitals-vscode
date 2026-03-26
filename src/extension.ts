@@ -329,7 +329,7 @@ function maybePushToDashboard(metrics: AllMetrics): void {
   const token: string = cfg.get("agentToken") ?? "";
   if (!backendUrl || !token) { return; }
 
-  const reportSessions: boolean = cfg.get("reportSessions") ?? true;
+  const reportSessions: boolean = cfg.get("reportSessions") ?? false;
   const payload: object = {
     hostname: metrics.host.hostname,
     cpu_percent: metrics.cpu.usagePercent,
