@@ -17,6 +17,10 @@ import * as vscode from "vscode";
 import * as https from "https";
 import * as http from "http";
 import * as crypto from "crypto";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import * as cp from "child_process";
 
 import { MetricsCollector, AllMetrics } from "./collector";
 import { getWebviewHtml } from "./webview";
@@ -55,6 +59,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("remoteVitals.configure", () => {
       void runSetupWizard(context);
+    }),
+    vscode.commands.registerCommand("remoteVitals.checkForUpdates", () => {
+      void checkForUpdates(context, true);
     })
   );
 
@@ -101,6 +108,9 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }
   })();
+
+  // ── Auto update check (once per day) ─────────────────────────────────────
+  void checkForUpdates(context, false);
 }
 
 export function deactivate(): void {
@@ -309,6 +319,133 @@ async function runSetupWizard(context: vscode.ExtensionContext): Promise<void> {
     vscode.window.showInformationMessage(
       "Remote Vitals: configuration sauvegardée. Dashboard push désactivé (URL ou token manquant)."
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-update — checks GitHub releases, downloads and installs new VSIX
+// ---------------------------------------------------------------------------
+
+const GITHUB_RELEASES_URL =
+  "https://api.github.com/repos/bensouille/remote-vitals-vscode/releases/latest";
+
+function httpsGet(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const options = new URL(url);
+    https.get(
+      { hostname: options.hostname, path: options.pathname + options.search, headers: { "User-Agent": "remote-vitals-vscode" } },
+      (res) => {
+        if (res.statusCode === 302 || res.statusCode === 301) {
+          resolve(httpsGet(res.headers.location!));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+        res.on("error", reject);
+      }
+    ).on("error", reject);
+  });
+}
+
+function httpsDownload(url: string, dest: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const follow = (u: string) => {
+      const parsed = new URL(u);
+      const mod = parsed.protocol === "https:" ? https : http;
+      mod.get(
+        { hostname: parsed.hostname, port: parsed.port || (parsed.protocol === "https:" ? 443 : 80), path: parsed.pathname + parsed.search, headers: { "User-Agent": "remote-vitals-vscode" } },
+        (res) => {
+          if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
+            follow(res.headers.location);
+            return;
+          }
+          const out = fs.createWriteStream(dest);
+          res.pipe(out);
+          out.on("finish", () => resolve());
+          out.on("error", reject);
+        }
+      ).on("error", reject);
+    };
+    follow(url);
+  });
+}
+
+function semverGt(a: string, b: string): boolean {
+  const parse = (s: string) => s.replace(/^v/, "").split(".").map(Number);
+  const [a1, a2, a3] = parse(a);
+  const [b1, b2, b3] = parse(b);
+  if (a1 !== b1) { return a1 > b1; }
+  if (a2 !== b2) { return a2 > b2; }
+  return a3 > b3;
+}
+
+async function checkForUpdates(
+  context: vscode.ExtensionContext,
+  manual: boolean
+): Promise<void> {
+  // Rate-limit: once per day (unless manual)
+  if (!manual) {
+    const lastCheck = context.globalState.get<number>("lastUpdateCheck") ?? 0;
+    if (Date.now() - lastCheck < 24 * 60 * 60 * 1000) { return; }
+  }
+  await context.globalState.update("lastUpdateCheck", Date.now());
+
+  try {
+    log.appendLine("[update] checking GitHub releases…");
+    const body = await httpsGet(GITHUB_RELEASES_URL);
+    const release = JSON.parse(body) as { tag_name: string; assets: { name: string; browser_download_url: string }[] };
+    const latest = release.tag_name;
+    const current: string = context.extension.packageJSON.version as string;
+
+    if (!semverGt(latest, `v${current}`)) {
+      log.appendLine(`[update] up to date (${current})`);
+      if (manual) {
+        vscode.window.showInformationMessage(`Remote Vitals est à jour (v${current})`);
+      }
+      return;
+    }
+
+    const asset = release.assets.find((a) => a.name.endsWith(".vsix"));
+    if (!asset) {
+      log.appendLine("[update] no VSIX asset found");
+      return;
+    }
+
+    const choice = await vscode.window.showInformationMessage(
+      `Remote Vitals: nouvelle version disponible (${latest}). Mettre à jour ?`,
+      "Mettre à jour",
+      "Plus tard"
+    );
+    if (choice !== "Mettre à jour") { return; }
+
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: `Remote Vitals: téléchargement ${latest}…`, cancellable: false },
+      async () => {
+        const vsixPath = path.join(os.tmpdir(), asset.name);
+        await httpsDownload(asset.browser_download_url, vsixPath);
+        log.appendLine(`[update] downloaded to ${vsixPath}, installing…`);
+        await new Promise<void>((resolve, reject) => {
+          cp.exec(`code --install-extension "${vsixPath}"`, (err, stdout) => {
+            if (err) { reject(err); } else { log.appendLine(`[update] ${stdout.trim()}`); resolve(); }
+          });
+        });
+        fs.unlink(vsixPath, () => {});
+      }
+    );
+
+    const reload = await vscode.window.showInformationMessage(
+      `Remote Vitals ${latest} installé. Recharger la fenêtre ?`,
+      "Recharger"
+    );
+    if (reload === "Recharger") {
+      await vscode.commands.executeCommand("workbench.action.reloadWindow");
+    }
+  } catch (err) {
+    log.appendLine(`[update] error: ${err}`);
+    if (manual) {
+      vscode.window.showErrorMessage(`Remote Vitals: erreur lors de la vérification des mises à jour — ${err}`);
+    }
   }
 }
 
