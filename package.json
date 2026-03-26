@@ -1,0 +1,77 @@
+{
+  "name": "remote-vitals",
+  "displayName": "Remote Vitals",
+  "description": "Live CPU / RAM / Disk / Network metrics from any remote SSH host — no agent install required. Reads /proc directly as a VS Code Workspace extension.",
+  "version": "0.1.0",
+  "publisher": "remote",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": ["Other"],
+  "keywords": ["remote", "ssh", "metrics", "cpu", "ram", "disk", "monitoring", "glances", "vitals"],
+  "extensionKind": ["workspace"],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:remoteVitals.showPanel"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "remoteVitals.showPanel",
+        "title": "Remote Vitals: Show Panel",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "remoteVitals.refresh",
+        "title": "Remote Vitals: Refresh Now",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        { "command": "remoteVitals.showPanel" },
+        { "command": "remoteVitals.refresh" }
+      ]
+    },
+    "configuration": {
+      "title": "Remote Vitals",
+      "properties": {
+        "remoteVitals.refreshInterval": {
+          "type": "number",
+          "default": 5,
+          "minimum": 2,
+          "maximum": 300,
+          "markdownDescription": "Refresh interval in seconds (default: 5)"
+        },
+        "remoteVitals.backendUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional: URL of your dashboard backend to also push metrics, e.g. `https://dashboard.example.com`"
+        },
+        "remoteVitals.agentToken": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional: `AGENT_TOKEN` for pushing metrics to the dashboard backend"
+        },
+        "remoteVitals.pushToDashboard": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Push metrics to the dashboard backend at each refresh"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.74.0",
+    "typescript": "^5.0.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}
