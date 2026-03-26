@@ -47,12 +47,22 @@
         "remoteVitals.backendUrl": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Dashboard backend URL, e.g. `https://dashboard.example.com`. When set (with `agentToken`), metrics are pushed at each refresh — no need to install `agent.py` on this host."
+          "markdownDescription": "Dashboard backend URL, e.g. `https://dashboard.example.com`. When set (with `agentToken`), metrics and VS Code sessions are pushed at each refresh — no need to install `agent.py` on this host."
         },
         "remoteVitals.agentToken": {
           "type": "string",
           "default": "",
           "markdownDescription": "Secret token matching the `AGENT_TOKEN` environment variable on the backend (`openssl rand -hex 32`)."
+        },
+        "remoteVitals.hostAlias": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "SSH config alias for this host (e.g. `MiniPC`). Used to build the `vscode://` deep-link in the dashboard. Defaults to the system hostname."
+        },
+        "remoteVitals.sshUser": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "SSH user for this host (e.g. `root`). Combined with `hostAlias` to form `user@host` in the dashboard deep-link."
         }
       }
     }
