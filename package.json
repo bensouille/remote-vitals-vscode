@@ -2,7 +2,7 @@
   "name": "remote-vitals",
   "displayName": "Remote Vitals",
   "description": "Live CPU / RAM / Disk / Network metrics from any remote SSH host — no agent install required. Reads /proc directly as a VS Code Workspace extension.",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "remote",
   "engines": {
     "vscode": "^1.74.0"

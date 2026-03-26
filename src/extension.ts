@@ -337,7 +337,7 @@ async function runSetupWizard(context: vscode.ExtensionContext): Promise<void> {
 // Background agent installer
 // ---------------------------------------------------------------------------
 
-const AGENT_REPO_URL = "https://raw.githubusercontent.com/your-username/remote-vitals-vscode/main/agent";
+const AGENT_REPO_URL = "https://raw.githubusercontent.com/bensouille/remote-vitals-vscode/main/agent";
 const AGENT_INSTALL_DIR = `${os.homedir()}/.local/dashboard-agent`;
 const AGENT_SERVICE = "dashboard-agent";
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # install.sh — one-liner deployment for the dashboard host agent
-# Usage: curl -fsSL https://raw.githubusercontent.com/your-username/remote-vitals-vscode/main/agent/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/bensouille/remote-vitals-vscode/main/agent/install.sh | bash
 # Or:    ./install.sh --backend https://dashboard.example.com --token <TOKEN>
 set -euo pipefail
 
-REPO_URL="https://raw.githubusercontent.com/your-username/remote-vitals-vscode/main/agent"
+REPO_URL="https://raw.githubusercontent.com/bensouille/remote-vitals-vscode/main/agent"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/dashboard-agent}"
 SERVICE_NAME="dashboard-agent"
 

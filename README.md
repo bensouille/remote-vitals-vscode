@@ -31,7 +31,7 @@ Optionally, it can also **push metrics to a dashboard backend** at each refresh 
 
 ### From VSIX (recommended)
 
-Download the latest `.vsix` from [GitHub Releases](https://github.com/your-username/remote-vitals-vscode/releases), then install it **on the remote host** while connected via SSH:
+Download the latest `.vsix` from [GitHub Releases](https://github.com/bensouille/remote-vitals-vscode/releases), then install it **on the remote host** while connected via SSH:
 
 **Via Command Palette:**
 `Ctrl+Shift+P` → `Extensions: Install from VSIX...` → select the file
