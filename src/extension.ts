@@ -62,6 +62,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("remoteVitals.checkForUpdates", () => {
       void checkForUpdates(context, true);
+    }),
+    vscode.commands.registerCommand("remoteVitals.installAgent", () => {
+      void installAgent(context);
     })
   );
 
@@ -312,14 +315,115 @@ async function runSetupWizard(context: vscode.ExtensionContext): Promise<void> {
   await context.globalState.update("setupDone", true);
 
   if (backendUrl && agentToken) {
-    vscode.window.showInformationMessage(
-      "Remote Vitals: dashboard push configuré — les métriques seront envoyées au prochain cycle."
+    // Offer to install the background agent so metrics keep flowing when VS Code is closed
+    const installChoice = await vscode.window.showInformationMessage(
+      "Remote Vitals: installer l'agent de fond (métriques même quand VS Code est fermé)?",
+      "Installer l'agent",
+      "Non merci"
     );
+    if (installChoice === "Installer l'agent") {
+      await installAgent(context, backendUrl, agentToken);
+    } else {
+      vscode.window.showInformationMessage(
+        "Remote Vitals: dashboard push configuré — les métriques seront envoyées au prochain cycle."
+      );
+    }
   } else {
     vscode.window.showInformationMessage(
       "Remote Vitals: configuration sauvegardée. Dashboard push désactivé (URL ou token manquant)."
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Background agent installer
+// ---------------------------------------------------------------------------
+
+const AGENT_REPO_URL = "https://raw.githubusercontent.com/bensouille/dashboard/main/agent";
+const AGENT_INSTALL_DIR = `${os.homedir()}/.local/dashboard-agent`;
+const AGENT_SERVICE = "dashboard-agent";
+
+async function installAgent(
+  context: vscode.ExtensionContext,
+  backendUrl?: string,
+  agentToken?: string
+): Promise<void> {
+  const cfg = vscode.workspace.getConfiguration("remoteVitals");
+  const url = backendUrl ?? (cfg.get<string>("backendUrl") ?? "");
+  const token = agentToken ?? (cfg.get<string>("agentToken") ?? "");
+
+  if (!url || !token) {
+    vscode.window.showErrorMessage(
+      "Remote Vitals: backendUrl et agentToken doivent être configurés avant d'installer l'agent."
+    );
+    return;
+  }
+
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: "Remote Vitals: installation de l'agent de fond…",
+      cancellable: false,
+    },
+    async (progress) => {
+      const run = (cmd: string): Promise<string> =>
+        new Promise((resolve, reject) =>
+          cp.exec(cmd, (err, stdout, stderr) => {
+            if (err) { reject(new Error(stderr || err.message)); } else { resolve(stdout.trim()); }
+          })
+        );
+
+      progress.report({ message: "Téléchargement des fichiers…" });
+      await run(`mkdir -p "${AGENT_INSTALL_DIR}"`);
+      for (const f of ["agent.py", "requirements.txt"]) {
+        await run(`curl -fsSL "${AGENT_REPO_URL}/${f}" -o "${AGENT_INSTALL_DIR}/${f}"`);
+      }
+
+      progress.report({ message: "Création de l'environnement Python…" });
+      await run(`python3 -m venv "${AGENT_INSTALL_DIR}/venv"`);
+      await run(`"${AGENT_INSTALL_DIR}/venv/bin/pip" install -q -r "${AGENT_INSTALL_DIR}/requirements.txt"`);
+
+      progress.report({ message: "Écriture de la configuration…" });
+      const yml = [
+        `backend: ${url}`,
+        `token: ${token}`,
+        `interval: 60`,
+        `no_report_sessions: true`,
+      ].join("\n") + "\n";
+      fs.writeFileSync(path.join(AGENT_INSTALL_DIR, "agent.yml"), yml, "utf-8");
+
+      progress.report({ message: "Configuration du service systemd…" });
+      const unitDir = path.join(os.homedir(), ".config", "systemd", "user");
+      await run(`mkdir -p "${unitDir}"`);
+      const unit = [
+        "[Unit]",
+        "Description=Dashboard Host Agent",
+        "After=network.target",
+        "",
+        "[Service]",
+        "Type=simple",
+        `ExecStart=${AGENT_INSTALL_DIR}/venv/bin/python ${AGENT_INSTALL_DIR}/agent.py --config ${AGENT_INSTALL_DIR}/agent.yml`,
+        "Restart=always",
+        "RestartSec=30",
+        "Environment=PYTHONUNBUFFERED=1",
+        "",
+        "[Install]",
+        "WantedBy=default.target",
+      ].join("\n") + "\n";
+      fs.writeFileSync(path.join(unitDir, `${AGENT_SERVICE}.service`), unit, "utf-8");
+
+      progress.report({ message: "Activation du service…" });
+      await run("systemctl --user daemon-reload");
+      await run(`systemctl --user enable --now "${AGENT_SERVICE}"`);
+
+      log.appendLine("[agent-install] done");
+    }
+  );
+
+  await context.globalState.update("agentInstalled", true);
+  vscode.window.showInformationMessage(
+    "Remote Vitals: agent de fond installé et démarré. Les métriques seront envoyées même quand VS Code est fermé."
+  );
 }
 
 // ---------------------------------------------------------------------------
