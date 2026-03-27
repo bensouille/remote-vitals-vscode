@@ -4,8 +4,10 @@ Dashboard Host Agent
 ====================
 Lightweight agent that runs on each remote host and reports:
   - CPU / RAM / Disk usage
-  - Running VS Code sessions (workspace path + VS Code remote URL)
   - Uptime, OS info
+
+Note: VS Code session reporting is handled exclusively by the
+session-reporter VS Code extension — NOT by this agent.
 
 Usage:
   python agent.py --backend https://dashboard.example.com \\
@@ -25,10 +27,8 @@ from __future__ import annotations
 import argparse
 import os
 import platform
-import re
 import socket
 import time
-from pathlib import Path
 from typing import Any
 
 import psutil
@@ -40,98 +40,16 @@ CHECKIN_PATH = "/api/v1/hosts/checkin"
 
 
 # ---------------------------------------------------------------------------
-# VS Code session detection
-# ---------------------------------------------------------------------------
-
-def _detect_vscode_sessions(hostname: str) -> list[dict[str, str]]:
-    """
-    Scan running processes for VS Code / code-server instances and extract
-    the workspace folder. Returns a list of {repo, vscode_url} dicts.
-    """
-    sessions: list[dict[str, str]] = []
-    seen_repos: set[str] = set()
-
-    try:
-        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-            try:
-                name = proc.info.get("name", "") or ""
-                cmdline = proc.info.get("cmdline") or []
-
-                is_vscode = any(
-                    kw in name.lower()
-                    for kw in ("code", "code-server", "code-oss")
-                )
-                if not is_vscode:
-                    # Also detect via cmdline
-                    cmd_str = " ".join(cmdline)
-                    if not any(kw in cmd_str for kw in ("/usr/bin/code", "code-server", ".vscode-server")):
-                        continue
-
-                # Extract workspace folder from cmdline
-                workspace: str | None = None
-                remote_authority: str | None = None  # e.g. "user@my-server"
-                for i, arg in enumerate(cmdline):
-                    # VS Code passes workspace as last positional arg or --folder-uri
-                    if arg == "--folder-uri" and i + 1 < len(cmdline):
-                        folder_uri = cmdline[i + 1]
-                        # URI looks like "vscode-remote://ssh-remote+user@my-server/home/user/myproject"
-                        # Extract the SSH authority (user@host) and the path separately
-                        m = re.match(r"vscode-remote://ssh-remote\+([^/]+)(/.*)$", folder_uri)
-                        if m:
-                            remote_authority = m.group(1)   # "user@my-server"
-                            workspace = m.group(2)          # "/home/user/myproject"
-                        else:
-                            # Fallback: just extract path
-                            m2 = re.search(r"/([^\s]+)$", folder_uri)
-                            if m2:
-                                workspace = "/" + m2.group(1)
-                        break
-                    if arg == "--extensionHostId":
-                        # skip internal workers
-                        workspace = None
-                        break
-
-                if workspace is None:
-                    # Heuristic: last arg that looks like an absolute path
-                    for arg in reversed(cmdline):
-                        if arg.startswith("/") and Path(arg).exists():
-                            workspace = arg
-                            break
-
-                if workspace and workspace not in seen_repos:
-                    seen_repos.add(workspace)
-                    # Use the extracted SSH authority if available (e.g. "user@my-server"),
-                    # otherwise fall back to the bare hostname.  The authority must match
-                    # exactly what VS Code uses to hash the workspace storage identity.
-                    remote = remote_authority or hostname
-                    from urllib.parse import quote
-                    vscode_url = (
-                        f"vscode://remote.session-reporter/open"
-                        f"?remote={quote(remote, safe='')}"
-                        f"&folder={quote(workspace, safe='')}"
-                    )
-                    sessions.append({"repo": workspace, "vscode_url": vscode_url})
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-    except Exception:
-        pass
-
-    return sessions
-
-
-# ---------------------------------------------------------------------------
 # Metrics collection
 # ---------------------------------------------------------------------------
 
-def _collect_metrics(report_sessions: bool = True) -> dict[str, Any]:
+def _collect_metrics() -> dict[str, Any]:
     cpu = psutil.cpu_percent(interval=1)
     ram = psutil.virtual_memory().percent
     disk = psutil.disk_usage("/").percent
     uptime = time.time() - psutil.boot_time()
     os_info = f"{platform.system()} {platform.release()}"
     hostname = socket.gethostname()
-
-    sessions = _detect_vscode_sessions(hostname) if report_sessions else []
 
     return {
         "hostname": hostname,
@@ -140,7 +58,7 @@ def _collect_metrics(report_sessions: bool = True) -> dict[str, Any]:
         "disk_percent": disk,
         "uptime_seconds": uptime,
         "os_info": os_info,
-        "vscode_sessions": sessions,
+        "vscode_sessions": [],
     }
 
 
@@ -148,8 +66,8 @@ def _collect_metrics(report_sessions: bool = True) -> dict[str, Any]:
 # Check-in
 # ---------------------------------------------------------------------------
 
-def checkin(backend: str, token: str, session: requests.Session, verify_ssl: bool, report_sessions: bool = True) -> None:
-    metrics = _collect_metrics(report_sessions)
+def checkin(backend: str, token: str, session: requests.Session, verify_ssl: bool) -> None:
+    metrics = _collect_metrics()
     url = backend.rstrip("/") + CHECKIN_PATH
     try:
         resp = session.post(
@@ -163,8 +81,7 @@ def checkin(backend: str, token: str, session: requests.Session, verify_ssl: boo
             print(f"[agent] WARN checkin returned {resp.status_code}: {resp.text[:200]}")
         else:
             print(f"[agent] OK — CPU {metrics['cpu_percent']}% "
-                  f"RAM {metrics['ram_percent']}% "
-                  f"sessions={len(metrics['vscode_sessions'])}")
+                  f"RAM {metrics['ram_percent']}%")
     except requests.RequestException as exc:
         print(f"[agent] ERROR — {exc}")
 
@@ -182,8 +99,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--config", help="Path to YAML config file")
     p.add_argument("--no-verify-ssl", action="store_true",
                    help="Disable SSL certificate verification (dev only)")
-    p.add_argument("--no-report-sessions", action="store_true",
-                   help="Do not include VS Code sessions in checkin (use when session-reporter extension is installed)")
     return p.parse_args()
 
 
@@ -203,7 +118,6 @@ def main() -> None:
     token: str = args.token or cfg.get("token") or os.environ.get("AGENT_TOKEN", "")
     interval: int = args.interval or cfg.get("interval", DEFAULT_INTERVAL)
     verify_ssl: bool = not (args.no_verify_ssl or cfg.get("no_verify_ssl", False))
-    report_sessions: bool = not (args.no_report_sessions or cfg.get("no_report_sessions", False))
 
     if not backend:
         raise SystemExit("ERROR: --backend is required")
@@ -216,7 +130,7 @@ def main() -> None:
     print(f"[agent] Starting — backend={backend} interval={interval}s")
 
     while True:
-        checkin(backend, token, session, verify_ssl, report_sessions)
+        checkin(backend, token, session, verify_ssl)
         time.sleep(interval)
 
 
