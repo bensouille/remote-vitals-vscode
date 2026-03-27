@@ -39,6 +39,10 @@ export interface DiskPartition {
   availKb: number;
   /** Usage 0–100 */
   usagePercent: number;
+  inodesTotal?: number;
+  inodesUsed?: number;
+  inodesFree?: number;
+  inodesPercent?: number;
 }
 
 export interface NetInterface {
@@ -48,6 +52,12 @@ export interface NetInterface {
   /** Bytes/s since last sample */
   rxRate: number;
   txRate: number;
+}
+
+export interface IpAddress {
+  iface: string;
+  ip: string;
+  family: 'IPv4' | 'IPv6';
 }
 
 export interface HostInfo {
@@ -69,6 +79,7 @@ export interface AllMetrics {
   mem: MemStats;
   disks: DiskPartition[];
   net: NetInterface[];
+  ips: IpAddress[];
 }
 
 // ---------------------------------------------------------------------------
@@ -233,6 +244,31 @@ export class MetricsCollector {
         usagePercent: isNaN(usagePct) ? 0 : usagePct,
       });
     }
+
+    // Enrich with inode usage via df -i
+    try {
+      const rawI = execSync("df -Pki 2>/dev/null", { timeout: 5000, encoding: "utf-8" });
+      for (const line of rawI.split("\n").slice(1)) {
+        if (!line.trim()) { continue; }
+        const cols = line.trim().split(/\s+/);
+        // Filesystem Inodes IUsed IFree IUse% Mounted
+        if (cols.length < 6) { continue; }
+        const mnt = cols[cols.length - 1];
+        const part = partitions.find((p) => p.mountpoint === mnt);
+        if (!part) { continue; }
+        const inodesTotal = parseInt(cols[1], 10);
+        const inodesUsed = parseInt(cols[2], 10);
+        const inodesFree = parseInt(cols[3], 10);
+        const inodesPct = parseInt(cols[4], 10);
+        if (!isNaN(inodesTotal) && inodesTotal > 0) {
+          part.inodesTotal = inodesTotal;
+          part.inodesUsed = inodesUsed;
+          part.inodesFree = inodesFree;
+          part.inodesPercent = isNaN(inodesPct) ? 0 : inodesPct;
+        }
+      }
+    } catch { /* df -i not available */ }
+
     return partitions;
   }
 
@@ -323,6 +359,25 @@ export class MetricsCollector {
     };
   }
 
+  // ── IP addresses ─────────────────────────────────────────────────────────
+
+  collectIps(): IpAddress[] {
+    const result: IpAddress[] = [];
+    const ifaces = os.networkInterfaces();
+    for (const [name, addrs] of Object.entries(ifaces)) {
+      if (!addrs) { continue; }
+      for (const a of addrs) {
+        if (a.internal) { continue; }
+        result.push({
+          iface: name,
+          ip: a.address,
+          family: a.family as 'IPv4' | 'IPv6',
+        });
+      }
+    }
+    return result;
+  }
+
   // ── Collect all ───────────────────────────────────────────────────────────
 
   collectAll(): AllMetrics {
@@ -333,6 +388,7 @@ export class MetricsCollector {
       mem: this.collectMem(),
       disks: this.collectDisks(),
       net: this.collectNet(),
+      ips: this.collectIps(),
     };
   }
 }

@@ -44,21 +44,47 @@ CHECKIN_PATH = "/api/v1/hosts/checkin"
 # ---------------------------------------------------------------------------
 
 def _collect_metrics() -> dict[str, Any]:
-    cpu = psutil.cpu_percent(interval=1)
+    cpu = psutil.cpu_percent(interval=1, percpu=False)
+    cpu_per_core: list[float] = psutil.cpu_percent(interval=0, percpu=True)  # type: ignore[assignment]
     mem = psutil.virtual_memory()
+    swap = psutil.swap_memory()
     ram = mem.percent
     disk = psutil.disk_usage("/").percent
     uptime = time.time() - psutil.boot_time()
     os_info = f"{platform.system()} {platform.release()}"
     hostname = socket.gethostname()
+    load1, load5, load15 = os.getloadavg() if hasattr(os, "getloadavg") else (0.0, 0.0, 0.0)
 
-    disks: list[dict[str, Any]] = []
+    # CPU model
+    cpu_model = "unknown"
+    cpu_cores = psutil.cpu_count(logical=True) or 1
+    try:
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if line.startswith("model name"):
+                    cpu_model = line.split(":", 1)[1].strip()
+                    break
+    except OSError:
+        pass
+
+    # IP addresses
+    ips: list[dict[str, str]] = []
+    try:
+        for iface, addrs in psutil.net_if_addrs().items():
+            for a in addrs:
+                if a.family in (2, 10) and a.address and not a.address.startswith("127."):  # AF_INET / AF_INET6
+                    ips.append({"iface": iface, "ip": a.address, "family": "IPv4" if a.family == 2 else "IPv6"})
+    except Exception:
+        pass
+
+    # Disks
     skip_fstypes = {
         "tmpfs", "devtmpfs", "sysfs", "proc", "devpts", "cgroup", "cgroup2",
         "pstore", "configfs", "debugfs", "hugetlbfs", "mqueue", "tracefs",
         "securityfs", "fusectl", "bpf", "overlay", "nsfs",
     }
     seen_devices: set[str] = set()
+    disks: list[dict[str, Any]] = []
     for part in psutil.disk_partitions(all=False):
         if part.fstype in skip_fstypes:
             continue
@@ -69,7 +95,7 @@ def _collect_metrics() -> dict[str, Any]:
         seen_devices.add(part.device)
         try:
             usage = psutil.disk_usage(part.mountpoint)
-            disks.append({
+            entry: dict[str, Any] = {
                 "mountpoint": part.mountpoint,
                 "device": part.device,
                 "fstype": part.fstype,
@@ -77,10 +103,22 @@ def _collect_metrics() -> dict[str, Any]:
                 "used_kb": usage.used // 1024,
                 "avail_kb": usage.free // 1024,
                 "usage_percent": usage.percent,
-            })
+            }
+            # Inodes via os.statvfs
+            try:
+                st = os.statvfs(part.mountpoint)
+                if st.f_files > 0:
+                    entry["inodes_total"] = st.f_files
+                    entry["inodes_used"] = st.f_files - st.f_ffree
+                    entry["inodes_free"] = st.f_ffree
+                    entry["inodes_percent"] = round((st.f_files - st.f_ffree) / st.f_files * 100, 1)
+            except OSError:
+                pass
+            disks.append(entry)
         except (PermissionError, OSError):
             continue
 
+    # Network
     net: list[dict[str, Any]] = []
     net_io = psutil.net_io_counters(pernic=True)
     for iface, counters in net_io.items():
@@ -106,6 +144,13 @@ def _collect_metrics() -> dict[str, Any]:
         "net": net,
         "mem_total_kb": mem.total // 1024,
         "mem_used_kb": mem.used // 1024,
+        "cpu_model": cpu_model,
+        "cpu_cores": cpu_cores,
+        "cpu_core_usage_json": __import__("json").dumps(cpu_per_core),
+        "load_avg_json": __import__("json").dumps([load1, load5, load15]),
+        "swap_total_kb": swap.total // 1024,
+        "swap_used_kb": swap.used // 1024,
+        "ips_json": __import__("json").dumps(ips),
     }
 
 
