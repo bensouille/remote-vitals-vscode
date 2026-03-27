@@ -178,45 +178,60 @@ export class MetricsCollector {
 
   collectDisks(): DiskPartition[] {
     const partitions: DiskPartition[] = [];
+
+    const skipTypes = new Set([
+      "tmpfs", "devtmpfs", "sysfs", "proc", "devpts", "cgroup",
+      "cgroup2", "pstore", "configfs", "debugfs", "hugetlbfs",
+      "mqueue", "tracefs", "securityfs", "fusectl", "bpf",
+      "overlay", "nsfs",
+    ]);
+
+    // Try GNU `df -Tk` (Filesystem Type 1K-blocks Used Available Use% Mounted)
+    // Fall back to POSIX `df -Pk` (no Type column) for BusyBox / Alpine / old coreutils.
+    let raw = "";
+    let hasType = true;
     try {
-      // -P: POSIX output, one line per FS
-      const raw = execSync("df -Pk --output=source,fstype,size,used,avail,pcent,target 2>/dev/null", {
-        timeout: 5000,
-        encoding: "utf-8",
-      });
-
-      const skipTypes = new Set([
-        "tmpfs", "devtmpfs", "sysfs", "proc", "devpts", "cgroup",
-        "cgroup2", "pstore", "configfs", "debugfs", "hugetlbfs",
-        "mqueue", "tracefs", "securityfs", "fusectl", "bpf",
-        "overlay", "nsfs"
-      ]);
-
-      for (const line of raw.split("\n").slice(1)) {
-        if (!line.trim()) { continue; }
-        const cols = line.split(/\s+/);
-        if (cols.length < 7) { continue; }
-
-        const [device, fstype, sizeKb, usedKb, availKb, pctStr, mountpoint] = cols;
-
-        // Skip pseudo / virtual filesystems
-        if (skipTypes.has(fstype)) { continue; }
-        // Skip loop devices
-        if (device.startsWith("/dev/loop")) { continue; }
-
-        const usagePct = parseInt(pctStr, 10);
-        partitions.push({
-          mountpoint,
-          device,
-          fstype,
-          totalKb: parseInt(sizeKb, 10),
-          usedKb: parseInt(usedKb, 10),
-          availKb: parseInt(availKb, 10),
-          usagePercent: isNaN(usagePct) ? 0 : usagePct,
-        });
-      }
+      raw = execSync("df -Tk 2>/dev/null", { timeout: 5000, encoding: "utf-8" });
     } catch {
-      // df not available or failed — return empty
+      try {
+        raw = execSync("df -Pk 2>/dev/null", { timeout: 5000, encoding: "utf-8" });
+        hasType = false;
+      } catch {
+        return partitions; // df not available at all
+      }
+    }
+
+    for (const line of raw.split("\n").slice(1)) {
+      if (!line.trim()) { continue; }
+      const cols = line.trim().split(/\s+/);
+
+      let device: string, fstype: string, sizeKb: string, usedKb: string, availKb: string, pctStr: string, mountpoint: string;
+      if (hasType) {
+        // 7 cols: Filesystem Type 1K-blocks Used Available Use% Mounted
+        if (cols.length < 7) { continue; }
+        [device, fstype, sizeKb, usedKb, availKb, pctStr, mountpoint] = cols as [string, string, string, string, string, string, string];
+        if (skipTypes.has(fstype)) { continue; }
+      } else {
+        // 6 cols: Filesystem 1K-blocks Used Available Use% Mounted
+        if (cols.length < 6) { continue; }
+        [device, sizeKb, usedKb, availKb, pctStr, mountpoint] = cols as [string, string, string, string, string, string];
+        fstype = "unknown";
+        // Without fstype, keep only real block devices
+        if (!device.startsWith("/dev/")) { continue; }
+      }
+
+      if (device.startsWith("/dev/loop")) { continue; }
+
+      const usagePct = parseInt(pctStr, 10);
+      partitions.push({
+        mountpoint,
+        device,
+        fstype,
+        totalKb: parseInt(sizeKb, 10),
+        usedKb: parseInt(usedKb, 10),
+        availKb: parseInt(availKb, 10),
+        usagePercent: isNaN(usagePct) ? 0 : usagePct,
+      });
     }
     return partitions;
   }
