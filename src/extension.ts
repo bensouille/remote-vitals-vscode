@@ -116,7 +116,15 @@ export function activate(context: vscode.ExtensionContext): void {
       // Already configured — ensure agent is installed
       const agentInstalled = context.globalState.get<boolean>("agentInstalled") ?? false;
       if (!agentInstalled) {
-        await installAgent(context);
+        try {
+          await installAgent(context);
+        } catch (err) {
+          log.appendLine(`[agent-install] FAILED: ${err}`);
+          vscode.window.showErrorMessage(
+            `Remote Vitals: échec de l'installation de l'agent — ${err}. ` +
+            `Vérifiez l'Output "Remote Vitals".`
+          );
+        }
       }
     }
   })();
@@ -338,8 +346,8 @@ async function runSetupWizard(context: vscode.ExtensionContext): Promise<void> {
 // ---------------------------------------------------------------------------
 
 const AGENT_REPO_URL = "https://raw.githubusercontent.com/bensouille/remote-vitals-vscode/main/agent";
-const AGENT_INSTALL_DIR = `${os.homedir()}/.local/dashboard-agent`;
-const AGENT_SERVICE = "dashboard-agent";
+const AGENT_INSTALL_DIR = `${os.homedir()}/.local/vitals-agent`;
+const AGENT_SERVICE = "vitals-agent";
 
 async function installAgent(
   context: vscode.ExtensionContext,
@@ -364,11 +372,16 @@ async function installAgent(
       cancellable: false,
     },
     async (progress) => {
+      const xdgRuntimeDir = `/run/user/${process.getuid?.() ?? 0}`;
       const run = (cmd: string): Promise<string> =>
         new Promise((resolve, reject) =>
-          cp.exec(cmd, (err, stdout, stderr) => {
-            if (err) { reject(new Error(stderr || err.message)); } else { resolve(stdout.trim()); }
-          })
+          cp.exec(
+            cmd,
+            { env: { ...process.env, XDG_RUNTIME_DIR: xdgRuntimeDir } },
+            (err, stdout, stderr) => {
+              if (err) { reject(new Error(stderr || err.message)); } else { resolve(stdout.trim()); }
+            }
+          )
         );
 
       progress.report({ message: "Téléchargement des fichiers…" });
@@ -395,7 +408,7 @@ async function installAgent(
       await run(`mkdir -p "${unitDir}"`);
       const unit = [
         "[Unit]",
-        "Description=Dashboard Host Agent",
+        "Description=Remote Vitals Host Agent",
         "After=network.target",
         "",
         "[Service]",
@@ -429,7 +442,7 @@ async function installAgent(
 // ---------------------------------------------------------------------------
 
 const GITHUB_RELEASES_URL =
-  "https://api.github.com/repos/your-username/remote-vitals-vscode/releases/latest";
+  "https://api.github.com/repos/bensouille/remote-vitals-vscode/releases/latest";
 
 function httpsGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {

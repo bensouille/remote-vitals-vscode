@@ -5,8 +5,8 @@
 set -euo pipefail
 
 REPO_URL="https://raw.githubusercontent.com/bensouille/remote-vitals-vscode/main/agent"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/dashboard-agent}"
-SERVICE_NAME="dashboard-agent"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/vitals-agent}"
+SERVICE_NAME="vitals-agent"
 
 # ---------- parse args ----------
 BACKEND=""
