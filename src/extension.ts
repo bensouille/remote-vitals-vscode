@@ -114,8 +114,9 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     } else if (currentUrl && currentToken) {
       // Already configured — ensure agent is installed
-      const agentInstalled = context.globalState.get<boolean>("agentInstalled") ?? false;
-      if (!agentInstalled) {
+      const AGENT_INSTALL_STAMP = `${AGENT_INSTALL_DIR};${AGENT_SERVICE}`;
+      const installedStamp = context.globalState.get<string>("agentInstalledStamp") ?? "";
+      if (installedStamp !== AGENT_INSTALL_STAMP) {
         try {
           await installAgent(context);
         } catch (err) {
@@ -431,7 +432,8 @@ async function installAgent(
     }
   );
 
-  await context.globalState.update("agentInstalled", true);
+  await context.globalState.update("agentInstalledStamp", `${AGENT_INSTALL_DIR};${AGENT_SERVICE}`);
+  await context.globalState.update("agentInstalled", true); // legacy compat
   vscode.window.showInformationMessage(
     "Remote Vitals: agent de fond installé et démarré. Les métriques seront envoyées même quand VS Code est fermé."
   );
