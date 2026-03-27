@@ -112,8 +112,13 @@ export function activate(context: vscode.ExtensionContext): void {
       } else {
         await context.globalState.update("setupDone", true);
       }
-    } else if (currentUrl && currentToken) {
-      // Already configured — ensure agent is installed
+    }
+
+    // Always check agent install independently of the wizard
+    // (covers: manual settings config, setupDone=true but agent missing)
+    const latestUrl: string = vscode.workspace.getConfiguration("remoteVitals").get("backendUrl") ?? "";
+    const latestToken: string = vscode.workspace.getConfiguration("remoteVitals").get("agentToken") ?? "";
+    if (latestUrl && latestToken) {
       const AGENT_INSTALL_STAMP = `${AGENT_INSTALL_DIR};${AGENT_SERVICE}`;
       const installedStamp = context.globalState.get<string>("agentInstalledStamp") ?? "";
       if (installedStamp !== AGENT_INSTALL_STAMP) {
