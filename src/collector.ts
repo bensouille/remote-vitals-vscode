@@ -362,10 +362,12 @@ export class MetricsCollector {
   // ── IP addresses ─────────────────────────────────────────────────────────
 
   collectIps(): IpAddress[] {
+    const VIRTUAL_PREFIXES = ['docker', 'br-', 'veth', 'virbr', 'tun', 'tap', 'vmnet', 'vboxnet', 'dummy', 'vnet', 'lxc', 'lxd', 'wg', 'ham'];
     const result: IpAddress[] = [];
     const ifaces = os.networkInterfaces();
     for (const [name, addrs] of Object.entries(ifaces)) {
       if (!addrs) { continue; }
+      if (VIRTUAL_PREFIXES.some(p => name.toLowerCase().startsWith(p))) { continue; }
       for (const a of addrs) {
         if (a.internal) { continue; }
         result.push({

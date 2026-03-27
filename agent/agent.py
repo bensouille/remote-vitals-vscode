@@ -67,10 +67,13 @@ def _collect_metrics() -> dict[str, Any]:
     except OSError:
         pass
 
-    # IP addresses
+    # IP addresses (physical interfaces only)
+    _VIRTUAL_PREFIXES = ("docker", "br-", "veth", "virbr", "tun", "tap", "vmnet", "vboxnet", "dummy", "vnet", "lxc", "lxd", "wg", "ham", "lo")
     ips: list[dict[str, str]] = []
     try:
         for iface, addrs in psutil.net_if_addrs().items():
+            if iface.lower().startswith(_VIRTUAL_PREFIXES):
+                continue
             for a in addrs:
                 if a.family in (2, 10) and a.address and not a.address.startswith("127."):  # AF_INET / AF_INET6
                     ips.append({"iface": iface, "ip": a.address, "family": "IPv4" if a.family == 2 else "IPv6"})
