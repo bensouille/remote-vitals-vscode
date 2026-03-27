@@ -45,11 +45,54 @@ CHECKIN_PATH = "/api/v1/hosts/checkin"
 
 def _collect_metrics() -> dict[str, Any]:
     cpu = psutil.cpu_percent(interval=1)
-    ram = psutil.virtual_memory().percent
+    mem = psutil.virtual_memory()
+    ram = mem.percent
     disk = psutil.disk_usage("/").percent
     uptime = time.time() - psutil.boot_time()
     os_info = f"{platform.system()} {platform.release()}"
     hostname = socket.gethostname()
+
+    disks: list[dict[str, Any]] = []
+    skip_fstypes = {
+        "tmpfs", "devtmpfs", "sysfs", "proc", "devpts", "cgroup", "cgroup2",
+        "pstore", "configfs", "debugfs", "hugetlbfs", "mqueue", "tracefs",
+        "securityfs", "fusectl", "bpf", "overlay", "nsfs",
+    }
+    seen_devices: set[str] = set()
+    for part in psutil.disk_partitions(all=False):
+        if part.fstype in skip_fstypes:
+            continue
+        if part.device.startswith("/dev/loop"):
+            continue
+        if part.device in seen_devices:
+            continue
+        seen_devices.add(part.device)
+        try:
+            usage = psutil.disk_usage(part.mountpoint)
+            disks.append({
+                "mountpoint": part.mountpoint,
+                "device": part.device,
+                "fstype": part.fstype,
+                "total_kb": usage.total // 1024,
+                "used_kb": usage.used // 1024,
+                "avail_kb": usage.free // 1024,
+                "usage_percent": usage.percent,
+            })
+        except (PermissionError, OSError):
+            continue
+
+    net: list[dict[str, Any]] = []
+    net_io = psutil.net_io_counters(pernic=True)
+    for iface, counters in net_io.items():
+        if iface == "lo":
+            continue
+        net.append({
+            "name": iface,
+            "rx_bytes": counters.bytes_recv,
+            "tx_bytes": counters.bytes_sent,
+            "rx_rate": 0,
+            "tx_rate": 0,
+        })
 
     return {
         "hostname": hostname,
@@ -59,6 +102,10 @@ def _collect_metrics() -> dict[str, Any]:
         "uptime_seconds": uptime,
         "os_info": os_info,
         "vscode_sessions": [],
+        "disks": disks,
+        "net": net,
+        "mem_total_kb": mem.total // 1024,
+        "mem_used_kb": mem.used // 1024,
     }
 
 

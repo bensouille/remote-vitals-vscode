@@ -576,6 +576,24 @@ function maybePushToDashboard(metrics: AllMetrics): void {
     uptime_seconds: Math.round(metrics.host.uptimeSeconds),
     os_info: `${metrics.host.platform} ${metrics.host.kernelRelease}`,
     vscode_sessions: [],
+    mem_total_kb: metrics.mem.totalKb,
+    mem_used_kb: metrics.mem.usedKb,
+    disks: metrics.disks.map((d) => ({
+      mountpoint: d.mountpoint,
+      device: d.device,
+      fstype: d.fstype,
+      total_kb: d.totalKb,
+      used_kb: d.usedKb,
+      avail_kb: d.availKb,
+      usage_percent: d.usagePercent,
+    })),
+    net: metrics.net.map((n) => ({
+      name: n.name,
+      rx_bytes: n.rxBytes,
+      tx_bytes: n.txBytes,
+      rx_rate: n.rxRate,
+      tx_rate: n.txRate,
+    })),
   };
 
   try {
