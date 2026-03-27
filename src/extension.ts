@@ -504,7 +504,6 @@ async function checkForUpdates(
     const lastCheck = context.globalState.get<number>("lastUpdateCheck") ?? 0;
     if (Date.now() - lastCheck < 24 * 60 * 60 * 1000) { return; }
   }
-  await context.globalState.update("lastUpdateCheck", Date.now());
 
   try {
     log.appendLine("[update] checking GitHub releases…");
@@ -515,6 +514,8 @@ async function checkForUpdates(
       log.appendLine(`[update] unexpected response — no tag_name: ${body.slice(0, 200)}`);
       return;
     }
+    // API responded successfully — update rate-limit timestamp
+    await context.globalState.update("lastUpdateCheck", Date.now());
     const current: string = context.extension.packageJSON.version as string;
 
     if (!semverGt(latest, `v${current}`)) {
