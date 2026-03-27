@@ -49,6 +49,20 @@ for f in agent.py requirements.txt; do
   curl -fsSL "$REPO_URL/$f" -o "$INSTALL_DIR/$f"
 done
 
+# Ensure python3-venv is available (Debian/Ubuntu)
+if ! python3 -m venv --help &>/dev/null; then
+  echo "python3-venv not found — installing..."
+  if command -v apt-get &>/dev/null; then
+    apt-get install -y python3-venv
+  elif command -v dnf &>/dev/null; then
+    dnf install -y python3
+  elif command -v yum &>/dev/null; then
+    yum install -y python3
+  else
+    echo "ERROR: cannot install python3-venv — install it manually and retry"; exit 1
+  fi
+fi
+
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install -q -r "$INSTALL_DIR/requirements.txt"
 
