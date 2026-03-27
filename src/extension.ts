@@ -456,10 +456,21 @@ function httpsGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const options = new URL(url);
     https.get(
-      { hostname: options.hostname, path: options.pathname + options.search, headers: { "User-Agent": "remote-vitals-vscode" } },
+      {
+        hostname: options.hostname,
+        path: options.pathname + options.search,
+        headers: {
+          "User-Agent": "remote-vitals-vscode",
+          "Accept": "application/vnd.github+json",
+        },
+      },
       (res) => {
         if (res.statusCode === 302 || res.statusCode === 301) {
           resolve(httpsGet(res.headers.location!));
+          return;
+        }
+        if (res.statusCode === 403 || res.statusCode === 429) {
+          reject(new Error(`GitHub API rate limit (HTTP ${res.statusCode})`));
           return;
         }
         const chunks: Buffer[] = [];
@@ -507,10 +518,13 @@ async function checkForUpdates(
   context: vscode.ExtensionContext,
   manual: boolean
 ): Promise<void> {
-  // Rate-limit: once per day (unless manual)
+  // Rate-limit: once per 6 hours (unless manual)
   if (!manual) {
     const lastCheck = context.globalState.get<number>("lastUpdateCheck") ?? 0;
-    if (Date.now() - lastCheck < 24 * 60 * 60 * 1000) { return; }
+    if (Date.now() - lastCheck < 6 * 60 * 60 * 1000) { return; }
+  } else {
+    // Manual check: reset rate-limit so next automatic check also fires
+    await context.globalState.update("lastUpdateCheck", 0);
   }
 
   try {
@@ -519,7 +533,10 @@ async function checkForUpdates(
     const release = JSON.parse(body) as { tag_name?: string; assets?: { name: string; browser_download_url: string }[] };
     const latest = release.tag_name;
     if (!latest) {
-      log.appendLine(`[update] unexpected response — no tag_name: ${body.slice(0, 200)}`);
+      log.appendLine(`[update] unexpected GitHub response (no tag_name): ${body.slice(0, 300)}`);
+      if (manual) {
+        vscode.window.showErrorMessage(`Remote Vitals: réponse GitHub inattendue — voir Output > Remote Vitals`);
+      }
       return;
     }
     // API responded successfully — update rate-limit timestamp
