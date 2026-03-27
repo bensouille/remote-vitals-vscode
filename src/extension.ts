@@ -238,50 +238,7 @@ function stopTimer(): void {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Session collection — uses VS Code API directly (no /proc scanning needed)
-// ---------------------------------------------------------------------------
 
-interface VscodeSession {
-  repo: string;
-  vscode_url: string;
-}
-
-/**
- * Returns the list of open workspace folders in this VS Code window as
- * {repo, vscode_url} objects compatible with the backend HostCheckin schema.
- *
- * The vscode_url uses the session-reporter URI handler so the dashboard can
- * open the workspace in a new window:
- *   vscode://remote.session-reporter/open?remote=HOST&folder=PATH
- *
- * `remote` is resolved in this order:
- *   1. remoteVitals.sshUser + remoteVitals.hostAlias  → "user@alias"
- *   2. remoteVitals.hostAlias                          → "alias"
- *   3. system hostname                                 → fallback
- */
-function collectSessions(
-  cfg: vscode.WorkspaceConfiguration,
-  hostname: string
-): VscodeSession[] {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) { return []; }
-
-  const alias: string = cfg.get("hostAlias") ?? "";
-  const sshUser: string = cfg.get("sshUser") ?? "";
-  const remote = alias
-    ? (sshUser ? `${sshUser}@${alias}` : alias)
-    : hostname;
-
-  return folders.map((f) => {
-    const folder = f.uri.fsPath;
-    const vscode_url =
-      `vscode://remote.session-reporter/open` +
-      `?remote=${encodeURIComponent(remote)}` +
-      `&folder=${encodeURIComponent(folder)}`;
-    return { repo: folder, vscode_url };
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Dashboard backend push (replaces agent.py for SSH-connected hosts)
@@ -611,7 +568,6 @@ function maybePushToDashboard(metrics: AllMetrics): void {
   const token: string = cfg.get("agentToken") ?? "";
   if (!backendUrl || !token) { return; }
 
-  const reportSessions: boolean = cfg.get("reportSessions") ?? false;
   const payload: object = {
     hostname: metrics.host.hostname,
     cpu_percent: metrics.cpu.usagePercent,
@@ -619,7 +575,7 @@ function maybePushToDashboard(metrics: AllMetrics): void {
     disk_percent: metrics.disks[0]?.usagePercent ?? 0,
     uptime_seconds: Math.round(metrics.host.uptimeSeconds),
     os_info: `${metrics.host.platform} ${metrics.host.kernelRelease}`,
-    vscode_sessions: reportSessions ? collectSessions(cfg, metrics.host.hostname) : [],
+    vscode_sessions: [],
   };
 
   try {
