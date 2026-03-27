@@ -425,6 +425,7 @@ async function installAgent(
       fs.writeFileSync(path.join(unitDir, `${AGENT_SERVICE}.service`), unit, "utf-8");
 
       progress.report({ message: "Activation du service…" });
+      await run("loginctl enable-linger");
       await run("systemctl --user daemon-reload");
       await run(`systemctl --user enable --now "${AGENT_SERVICE}"`);
 

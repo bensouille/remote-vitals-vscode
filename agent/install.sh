@@ -64,6 +64,7 @@ Environment=PYTHONUNBUFFERED=1
 WantedBy=default.target
 EOF
 
+loginctl enable-linger
 systemctl --user daemon-reload
 systemctl --user enable --now "${SERVICE_NAME}.service"
 
